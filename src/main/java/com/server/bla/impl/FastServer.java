@@ -82,23 +82,26 @@ public class FastServer implements Server {
 
         @Override
         public void run() {
-            try {
-                selector.select();
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                Iterator<SelectionKey> iterator = selectedKeys.iterator();
+            while(channel.isOpen()) {
+                try {
+                    selector.select();
+                    Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                    Iterator<SelectionKey> iterator = selectedKeys.iterator();
 
-                while (iterator.hasNext()) {
-                    SelectionKey key = iterator.next();
-                    iterator.remove();
+                    while (iterator.hasNext()) {
+                        SelectionKey key = iterator.next();
+                        iterator.remove();
 
-                    if (key.isReadable()) {
-                        read(key);
+                        if (key.isReadable()) {
+                            read(key);
+                        }
                     }
-                }
 
-            } catch (IOException e) {
-                e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             }
+
         }
 
         protected void read(SelectionKey key) throws IOException {
@@ -106,18 +109,18 @@ public class FastServer implements Server {
             SocketAddress address = channel.getRemoteAddress();
             logger.debug("read from: {}", address);
 
-            ByteBuffer buffer = ByteBuffer.allocate(64*1024);
+            ByteBuffer buffer = ByteBuffer.allocate(10);
 
             int byteCount = channel.read(buffer);
 
-            if (byteCount > 0) {
-                buffer.flip();
-            } else {
-                buffer = ByteBuffer.wrap("no content".getBytes());
+            if (byteCount == -1) {
+                channel.close();
             }
 
-            channel.write(buffer);
-            channel.close();
+            if (byteCount > 0) {
+                buffer.flip();
+                channel.write(buffer);
+            }
 
             logger.debug("done reading from: {}", address);
         }
