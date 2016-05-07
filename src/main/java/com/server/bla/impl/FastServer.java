@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -58,71 +57,99 @@ public class FastServer implements Server {
                 if (key.isAcceptable()) {
                     SocketChannel socketChannel = ((ServerSocketChannel) key.channel()).accept();
                     logger.debug("Accept connection from: " + socketChannel.getRemoteAddress());
-                    executorService.submit(new Worker(socketChannel));
+                    socketChannel.configureBlocking(false);
+                    socketChannel.register(selector, SelectionKey.OP_READ);
+                }
+
+                if (key.isReadable()) {
+                    SocketChannel socketChannel = (SocketChannel) key.channel();
+                    Request request = (Request) key.attachment();
+
+                    if (request == null) {
+                        request = new Request(socketChannel);
+                        key.attach(request);
+                    } else {
+                        request.setChannel(socketChannel);
+                    }
+
+                    boolean keepAlive = true;
+
+                    try {
+                        request.readData();
+                    } catch (IOException e) {
+                        keepAlive = false;
+                    }
+
+                    String line;
+                    while((line = request.readLine()) != null) {
+                        logger.debug(line);
+                        if (line.isEmpty()) {
+                            StringBuilder sb = new StringBuilder();
+                            sb.append("HTTP/1.1 204 No content\r\n");
+                            sb.append("Cache-Control: private\r\n");
+                            sb.append("Content-Length: 0\r\n");
+                            sb.append("Date: Sat, 07 May 2016 16:14:47 GMT\r\n\r\n");
+
+                            socketChannel.write(ByteBuffer.wrap(sb.toString().getBytes()));
+                        }
+                    }
+
+                    if (!keepAlive) {
+                        socketChannel.close();
+                    }
                 }
             }
         }
     }
 
-    class Worker implements Runnable {
+    class Request {
 
-        final SocketChannel channel;
-        Selector selector;
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        SocketChannel channel;
+        int mark = 0;
 
-        public Worker(SocketChannel channel) {
+        public Request(SocketChannel channel) {
             this.channel = channel;
-            try {
-                this.selector = Selector.open();
-                channel.configureBlocking(false);
-                channel.register(selector, SelectionKey.OP_READ);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
 
-        @Override
-        public void run() {
-            while(channel.isOpen()) {
-                try {
-                    selector.select();
-                    Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                    Iterator<SelectionKey> iterator = selectedKeys.iterator();
-
-                    while (iterator.hasNext()) {
-                        SelectionKey key = iterator.next();
-                        iterator.remove();
-
-                        if (key.isReadable()) {
-                            read(key);
-                        }
-                    }
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-
-        }
-
-        protected void read(SelectionKey key) throws IOException {
-            SocketChannel channel = (SocketChannel) key.channel();
-            SocketAddress address = channel.getRemoteAddress();
-            logger.debug("read from: {}", address);
-
-            ByteBuffer buffer = ByteBuffer.allocate(10);
-
+        public void readData() throws IOException {
             int byteCount = channel.read(buffer);
 
             if (byteCount == -1) {
-                channel.close();
+                throw new IOException("EOF");
             }
 
-            if (byteCount > 0) {
-                buffer.flip();
-                channel.write(buffer);
+            buffer.flip();
+            buffer.position(mark);
+        }
+
+        public String readLine() {
+            StringBuilder sb = new StringBuilder();
+            int l = -1;
+
+            while(buffer.hasRemaining()) {
+                char c = (char) buffer.get();
+                sb.append(c);
+                if (c == '\n' && l == '\r') {
+                    mark = buffer.position();
+
+                    return sb.substring(0, sb.length() - 2);
+                }
+
+                l = c;
             }
 
-            logger.debug("done reading from: {}", address);
+            return null;
+        }
+
+        public void setChannel(SocketChannel channel) {
+            this.channel = channel;
+            clear();
+        }
+
+        public void clear() {
+            mark = 0;
+            buffer.clear();
         }
     }
 }
