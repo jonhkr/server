@@ -45,12 +45,18 @@ public class HttpRequestHandler implements RequestHandler {
             }
 
             if (line.isEmpty()) {
+                String content = "<html><head><title>Hi</title></head><body><h1>Hello <small>world</small></h1></body></html>";
+
                 StringBuilder sb = new StringBuilder();
                 sb.append("HTTP/1.1 200 Ok\r\n");
-                sb.append("Content-Length: 0\r\n");
+                sb.append(String.format("Content-Length: %s\r\n", content.getBytes().length));
                 if (keepAlive() == 1) {
-                    sb.append("Connection: keep-alive\r\n\r\n");
+                    sb.append("Connection: keep-alive\r\n");
                 }
+
+                sb.append("\r\n");
+                sb.append(content);
+                sb.append("\r\n\r\n");
 
                 channel.write(ByteBuffer.wrap(sb.toString().getBytes()));
             }
