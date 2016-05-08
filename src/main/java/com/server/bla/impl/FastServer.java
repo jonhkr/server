@@ -211,8 +211,11 @@ public class FastServer implements Server {
 
                             if (line.isEmpty()) {
                                 StringBuilder sb = new StringBuilder();
-                                sb.append("HTTP/1.0 200 Ok\r\n");
-                                sb.append("Content-Length: 0\r\n\r\n");
+                                sb.append("HTTP/1.1 200 Ok\r\n");
+                                sb.append("Content-Length: 0\r\n");
+                                if (request.getKeepAlive() == 1) {
+                                    sb.append("Connection: keep-alive\r\n\r\n");
+                                }
 
                                 socketChannel.write(ByteBuffer.wrap(sb.toString().getBytes()));
                             }

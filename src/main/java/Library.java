@@ -16,7 +16,6 @@ public class Library {
         Server server = new FastServer(new ServerOptions("0.0.0.0", 4000));
 
         server.listen();
-
     }
 
     public boolean someLibraryMethod() {
